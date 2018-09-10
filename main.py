@@ -67,7 +67,7 @@ def sharpe_ratios(returnsDF, risk_free=0.025):
 
     return _sortResult(result, reverse=True)
 
-def tracking_error(returnsDF):
+def tracking_error(returnsDF, risk_free=0.025):
     def _tracingError( marketMean, fciReturn):
         return marketMean - fciReturn.mean()
 
@@ -93,19 +93,22 @@ def _sortResult(result, reverse=False):
     result.sort(key=lambda pair: pair[1], reverse=reverse)
     return result
 
+def risk_free():
+    #TODO put real series
+    return 0.025
 
 def _filePath(*args):
     import os
     mainPath = os.path.dirname(os.path.realpath(__file__))
     return os.path.join(mainPath,*args)
 
+#(Name of indicator, function)
+FCI_ANALYSIS_FUNCS = [('Alpha Jensen',alpha_jensen), ('Sharpe Ratio',sharpe_ratios),
+                      ("Tracking Error",tracking_error), ("Treynor Ratio",treynor_ratio)]
+
 def main():
     returnsDF = get_returns()
-    print("Alpha Jensen")
-    print(alpha_jensen(returnsDF))
-    print("Sharpe Ratio")
-    print(sharpe_ratios(returnsDF))
-    print("Tracking Error")
-    print(tracking_error(returnsDF))
-    print("Treynor Ratio")
-    print(treynor_ratio(returnsDF))
+    riskFree = risk_free()
+    for funcName, func in FCI_ANALYSIS_FUNCS:
+        print(funcName)
+        print(func(returnsDF,riskFree))
