@@ -48,18 +48,38 @@ def get_returns(fromDate='2015-09-15', dropLastRow=True, prefix='Monthly', fileN
     result.set_index('Date', drop=True, inplace=True)
     return result
 
-def alpha_jensen(risk_free=0.025):
-    returnsDF = get_returns().sub(risk_free)
+def alpha_jensen(returnsDF, risk_free=0.025):
+    returnsDF = returnsDF.sub(risk_free)
     result = []
     for aFCI in FCIS:
         model = sm.OLS(returnsDF[aFCI], sm.add_constant(returnsDF['Merval'])).fit()
         result.append((aFCI,model.pvalues[0]))
 
-    result.sort(key = lambda pair : pair[1])
+    return _sortResult(result)
 
+def sharpe_ratios(returnsDF, risk_free=0.025):
+    def _sharpeRatio( fciReturn, riskFree):
+        return (fciReturn.mean() - riskFree)/fciReturn.std()
+
+    result = []
+    for aFCI in FCIS:
+        result.append((aFCI,_sharpeRatio(returnsDF[aFCI],risk_free)))
+
+    return _sortResult(result, reverse=True)
+
+def _sortResult(result, reverse=False):
+    result.sort(key=lambda pair: pair[1], reverse=reverse)
     return result
+
 
 def _filePath(*args):
     import os
     mainPath = os.path.dirname(os.path.realpath(__file__))
     return os.path.join(mainPath,*args)
+
+def main():
+    returnsDF = get_returns()
+    print("Alpha Jensen")
+    print(alpha_jensen(returnsDF))
+    print("Sharpe Ratio")
+    print(sharpe_ratios(returnsDF))
