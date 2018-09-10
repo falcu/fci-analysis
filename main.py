@@ -76,7 +76,8 @@ def tracking_error(returnsDF, risk_free=0.025):
     for aFCI in FCIS:
         result.append((aFCI,_tracingError(marketMean, returnsDF[aFCI])))
 
-    return _sortResult(result)
+    compareFunc = lambda pair : abs(pair[1])
+    return _sortResult(result, compareFunc=compareFunc)
 
 def treynor_ratio(returnsDF, risk_free=0.025):
     def _treynorRatio( marketReturns, fciReturn, riskFree):
@@ -89,8 +90,9 @@ def treynor_ratio(returnsDF, risk_free=0.025):
 
     return _sortResult(result, reverse=True)
 
-def _sortResult(result, reverse=False):
-    result.sort(key=lambda pair: pair[1], reverse=reverse)
+def _sortResult(result, reverse=False, compareFunc=None):
+    compareFunc = compareFunc or (lambda pair : pair[1])
+    result.sort(key=compareFunc, reverse=reverse)
     return result
 
 def risk_free():
@@ -103,12 +105,18 @@ def _filePath(*args):
     return os.path.join(mainPath,*args)
 
 #(Name of indicator, function)
-FCI_ANALYSIS_FUNCS = [('Alpha Jensen',alpha_jensen), ('Sharpe Ratio',sharpe_ratios),
+FCI_ANALYSIS_FUNCS = [('Alpha Jensen(P-Value)',alpha_jensen), ('Sharpe Ratio',sharpe_ratios),
                       ("Tracking Error",tracking_error), ("Treynor Ratio",treynor_ratio)]
 
 def main():
+    from prettytable import PrettyTable
     returnsDF = get_returns()
     riskFree = risk_free()
     for funcName, func in FCI_ANALYSIS_FUNCS:
+        t = PrettyTable(['FCI', funcName])
+        result = func(returnsDF, riskFree)
+        for pair in result:
+            t.add_row(pair)
         print(funcName)
-        print(func(returnsDF,riskFree))
+        print(t)
+        print("--------------------------------------------------------")
