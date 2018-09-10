@@ -1,4 +1,5 @@
 import pandas as pd
+import statsmodels.api as sm
 
 MARKET = 'Merval'
 FCIS = ['1810 RVA', '1822 RVN', 'Alpha A', 'Alpha B', 'Axis A',
@@ -45,6 +46,17 @@ def get_returns(fromDate='2015-09-15', dropLastRow=True, prefix='Monthly', fileN
 
     result = pd.concat([dates,fciReturnsDF], axis=1)
     result.set_index('Date', drop=True, inplace=True)
+    return result
+
+def alpha_jensen(risk_free=0.025):
+    returnsDF = get_returns().sub(risk_free)
+    result = []
+    for aFCI in FCIS:
+        model = sm.OLS(returnsDF[aFCI], sm.add_constant(returnsDF['Merval'])).fit()
+        result.append((aFCI,model.pvalues[0]))
+
+    result.sort(key = lambda pair : pair[1])
+
     return result
 
 def _filePath(*args):
