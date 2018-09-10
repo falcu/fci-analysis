@@ -67,6 +67,29 @@ def sharpe_ratios(returnsDF, risk_free=0.025):
 
     return _sortResult(result, reverse=True)
 
+def tracking_error(returnsDF):
+    def _tracingError( marketMean, fciReturn):
+        return marketMean - fciReturn.mean()
+
+    result = []
+    marketMean = returnsDF[MARKET].mean()
+    for aFCI in FCIS:
+        result.append((aFCI,_tracingError(marketMean, returnsDF[aFCI])))
+
+    return _sortResult(result)
+
+def treynor_ratio(returnsDF, risk_free=0.025):
+    def _treynorRatio( marketReturns, fciReturn, riskFree):
+        model = sm.OLS(fciReturn, sm.add_constant(marketReturns)).fit()
+        beta = model.params[1]
+        return (fciReturn.mean() - riskFree)/beta
+
+    result = []
+    for aFCI in FCIS:
+        result.append((aFCI,_treynorRatio(returnsDF[MARKET],returnsDF[aFCI],risk_free)))
+
+    return _sortResult(result, reverse=True)
+
 def _sortResult(result, reverse=False):
     result.sort(key=lambda pair: pair[1], reverse=reverse)
     return result
@@ -83,3 +106,7 @@ def main():
     print(alpha_jensen(returnsDF))
     print("Sharpe Ratio")
     print(sharpe_ratios(returnsDF))
+    print("Tracking Error")
+    print(tracking_error(returnsDF))
+    print("Treynor Ratio")
+    print(treynor_ratio(returnsDF))
