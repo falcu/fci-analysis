@@ -80,8 +80,7 @@ def tracking_error(returnsDF):
 
 def treynor_ratio(returnsDF, risk_free=0.025):
     def _treynorRatio( marketReturns, fciReturn, riskFree):
-        model = sm.OLS(fciReturn, sm.add_constant(marketReturns)).fit()
-        beta = model.params[1]
+        beta = (marketReturns.cov(fciReturn))/marketReturns.var()
         return (fciReturn.mean() - riskFree)/beta
 
     result = []
