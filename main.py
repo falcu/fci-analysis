@@ -2,12 +2,27 @@ import pandas as pd
 import statsmodels.api as sm
 
 MARKET = 'Merval'
-FCIS = ['1810 RVA', '1822 RVN', 'Alpha A', 'Alpha B', 'Axis A',
-        'Axis B', 'Arpenta', 'FBA B', 'Fima PB A', 'Fima PB B',
-        'Gainvest', 'Pellegrini A', 'Pellegrini B', 'SBS A', 'SBS B',
-        'Superfondo A', 'Superfondo B']
+IR = 'LEBAC'
+FCIS = {
+            'Class A':['1810 RVA', '1822 RVN', 'Alpha A', 'Axis A', 'Arpenta', 'Fima PB A', 'Gainvest', 'Pellegrini A',
+                       'SBS A', 'Superfondo A', 'Premier A', 'Pionero'],
+            'Class B':['Alpha B', 'Axis B', 'FBA B', 'Fima PB B', 'Pellegrini B', 'SBS B', 'Superfondo B', 'Premier B'],
+        }
 
-def get_returns(fromDate='2015-09-15', dropLastRow=True, prefix='Monthly', fileName='FCIs Monthly.xlsx'):
+FROM_DATE = '2015-09-15'
+FILE_NAME = 'FCIs Monthly.xlsx'
+
+def _flatten(x):
+    if isinstance(x, list):
+        return [a for i in x for a in _flatten(i)]
+    else:
+        return [x]
+
+def _allFCIs():
+
+    return _flatten(list(FCIS.values()))
+
+def get_returns(fromDate='2015-09-15', dropLastRow=True, prefix='Monthly', fileName=FILE_NAME):
     series = []
     filePath = _filePath( fileName )
     if prefix:
@@ -25,7 +40,7 @@ def get_returns(fromDate='2015-09-15', dropLastRow=True, prefix='Monthly', fileN
     marketCloseS.reset_index(drop=True, inplace=True)
     marketCloseS.name = MARKET
     series.append(marketFromDateDF['Close'])
-    for aFCI in FCIS:
+    for aFCI in _allFCIs():
         fciDF = pd.read_excel(filePath, sheetname = fileName(aFCI))
         fciDF.set_index('Date', inplace=True, drop=True)
         fciCloseS = fciDF.loc[fromDate:]['NAV']
@@ -45,59 +60,68 @@ def get_returns(fromDate='2015-09-15', dropLastRow=True, prefix='Monthly', fileN
     fciReturnsDF = oneToTPricesDF.sub(zeroToTMinus1PricesDF).divide(zeroToTMinus1PricesDF)
 
     result = pd.concat([dates,fciReturnsDF], axis=1)
-    result.set_index('Date', drop=True, inplace=True)
+    result.set_index('Date', drop=False, inplace=True)
+    #result.reset_index(drop=True, inplace=True)
     return result
 
-def alpha_jensen(returnsDF, risk_free=0.025):
-    returnsDF = returnsDF.sub(risk_free)
-    result = []
-    for aFCI in FCIS:
-        model = sm.OLS(returnsDF[aFCI], sm.add_constant(returnsDF['Merval'])).fit()
-        result.append((aFCI,model.pvalues[0]))
+def indicator_func(func, returnsDF, risk_free=0.025, reverse=False, compareFunc=None):
+    result = {k:[] for k in FCIS}
+    marketReturnsDF = returnsDF[MARKET]
+    for k in FCIS:
+        for aFCI in FCIS[k]:
+            fciResult = _flatten([ aFCI,func(marketReturnsDF,returnsDF[aFCI],risk_free)])
+            result[k].append(fciResult)
 
-    return _sortResult(result)
+    for k in result:
+        _sortResult(result[k],reverse=reverse,compareFunc=compareFunc)
 
-def sharpe_ratios(returnsDF, risk_free=0.025):
-    def _sharpeRatio( fciReturn, riskFree):
-        return (fciReturn.mean() - riskFree)/fciReturn.std()
+    return result
 
-    result = []
-    for aFCI in FCIS:
-        result.append((aFCI,_sharpeRatio(returnsDF[aFCI],risk_free)))
+def alpha_jensen(marketReturnsDF,fciReturnsDF, risk_free=0.025):
+    marketName = marketReturnsDF.name
+    fciName = fciReturnsDF.name
+    marketReturnsDF = marketReturnsDF - risk_free
+    marketReturnsDF.name = marketName
+    fciReturnsDF = fciReturnsDF - risk_free
+    fciReturnsDF.name = fciName
+    model = sm.OLS(fciReturnsDF, sm.add_constant(marketReturnsDF)).fit()
 
-    return _sortResult(result, reverse=True)
+    return [model.params[0],model.pvalues[0]]
 
-def tracking_error(returnsDF, risk_free=0.025):
-    def _tracingError( marketMean, fciReturn):
-        return marketMean - fciReturn.mean()
+def sharpe_ratio(marketReturnsDF,fciReturnsDF, risk_free=0.025):
+    return (fciReturnsDF.mean() - risk_free.mean()) / fciReturnsDF.std()
 
-    result = []
-    marketMean = returnsDF[MARKET].mean()
-    for aFCI in FCIS:
-        result.append((aFCI,_tracingError(marketMean, returnsDF[aFCI])))
+def tracking_error(marketReturnsDF,fciReturnsDF, risk_free=0.025):
+    return marketReturnsDF.mean() - fciReturnsDF.mean()
 
-    compareFunc = lambda pair : abs(pair[1])
-    return _sortResult(result, compareFunc=compareFunc)
-
-def treynor_ratio(returnsDF, risk_free=0.025):
-    def _treynorRatio( marketReturns, fciReturn, riskFree):
-        beta = (marketReturns.cov(fciReturn))/marketReturns.var()
-        return (fciReturn.mean() - riskFree)/beta
-
-    result = []
-    for aFCI in FCIS:
-        result.append((aFCI,_treynorRatio(returnsDF[MARKET],returnsDF[aFCI],risk_free)))
-
-    return _sortResult(result, reverse=True)
+def treynor_ratio(marketReturnsDF,fciReturnsDF, risk_free=0.025):
+    beta = (marketReturnsDF.cov(fciReturnsDF)) / marketReturnsDF.var()
+    return (fciReturnsDF.mean() - risk_free.mean()) / beta
 
 def _sortResult(result, reverse=False, compareFunc=None):
     compareFunc = compareFunc or (lambda pair : pair[1])
     result.sort(key=compareFunc, reverse=reverse)
     return result
 
-def risk_free():
-    #TODO put real series
-    return 0.025
+def _absResult(result):
+    return abs(result[1])
+
+def _sortAlphaJensen(result):
+    return result[2]
+
+def risk_free(returnsDF,fromDate=FROM_DATE):
+    irDF = pd.read_excel(_filePath(FILE_NAME), sheetname='{} - Monthly'.format(IR))
+    irDF.set_index('Date', inplace=True, drop=True)
+    irS = irDF.loc[fromDate:]['Yield']
+    irS.reset_index(drop=True, inplace=True)
+    irS = irS[:-1]
+    irS.name = IR
+    dates = returnsDF['Date']
+    dates.reset_index(drop=True, inplace=True)
+    dates.name = 'Date'
+    irsFinal = pd.concat([dates,irS], axis=1)
+    irsFinal.set_index('Date', inplace=True, drop=True)
+    return irsFinal[IR]
 
 def _filePath(*args):
     import os
@@ -105,18 +129,27 @@ def _filePath(*args):
     return os.path.join(mainPath,*args)
 
 #(Name of indicator, function)
-FCI_ANALYSIS_FUNCS = [('Alpha Jensen(P-Value)',alpha_jensen), ('Sharpe Ratio',sharpe_ratios),
-                      ("Tracking Error",tracking_error), ("Treynor Ratio",treynor_ratio)]
+FCI_ANALYSIS_FUNCS = [('Alpha Jensen',alpha_jensen,['FCI','Alpha','P Value'],False,_sortAlphaJensen),
+                      ('Sharpe Ratio',sharpe_ratio,['FCI','Sharpe Ratio'],True,None),
+                      ("Tracking Error",tracking_error,['FCI','Tracking Error'],False,_absResult),
+                      ("Treynor Ratio",treynor_ratio,['FCI','Treynor Ratio'],True,None)]
+
 
 def main():
     from prettytable import PrettyTable
     returnsDF = get_returns()
-    riskFree = risk_free()
-    for funcName, func in FCI_ANALYSIS_FUNCS:
-        t = PrettyTable(['FCI', funcName])
-        result = func(returnsDF, riskFree)
-        for pair in result:
-            t.add_row(pair)
-        print(funcName)
-        print(t)
-        print("--------------------------------------------------------")
+    riskFree = risk_free(returnsDF)
+    for fciData in FCI_ANALYSIS_FUNCS:
+        fciIndicatorName, fciFunc, fciColumns, fciReverseResult, fciCustomFuncSort = fciData
+        fciResult = indicator_func(fciFunc,returnsDF,riskFree,fciReverseResult,fciCustomFuncSort)
+        for fciClass in fciResult:
+            t = PrettyTable(fciColumns)
+            result = fciResult[fciClass]
+            for pair in result:
+                t.add_row(pair)
+            print(fciIndicatorName+" - "+fciClass)
+            print(t)
+            print("--------------------------------------------------------")
+
+if __name__ == '__main__':
+    main()
